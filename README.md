@@ -40,6 +40,18 @@ vless://这是UUID@这是服务器:11451?type=tcp&encryption=none&flow=xtls-rprx
 
 当然, 你也可以将分享链接转换回 Clash 配置 (支持 `proxies:` / `payload:` / 无前缀三种输出格式).
 
+## Clash 分流预设
+
+将节点分享链接转换为 Clash (Mihomo) 配置时，可选以下分流预设：
+
+- **仅输出节点（默认）**：保持原有 `proxies:` / `payload:` / 裸节点列表行为。
+- **绕过大陆**：局域网及私有地址、国内域名和中国 IP 直连，其余流量交由节点选择组代理。
+- **规则分流**：在绕过大陆的基础上增加 Mihomo `GEOSITE,category-ads-all,REJECT` 广告拦截规则。
+- **全局代理**：所有流量交由节点选择组。
+- **全局直连**：所有流量直连。
+
+启用分流预设后输出完整 Mihomo 配置，包含 `proxies`、`proxy-groups` 和 `rules`。节点选择组支持手动选择及自动测速；分流模式会忽略上方的节点列表输出格式选项。规则集使用 Mihomo 内置的 GEOSITE / GEOIP 数据，需确保客户端核心和规则数据库支持这些规则。
+
 ## 支持的协议
 
 | 协议类型     | Clash 写法 | 节点链接格式          | 备注（*可能不完整*支持特性）                |
