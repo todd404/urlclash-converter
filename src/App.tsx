@@ -7,7 +7,7 @@ import {
   makeStyles,
   tokens,
 } from "@fluentui/react-components";
-import { linkToClash, clashToLink } from "./converter";
+import { linkToClash, clashToLink, type ClashRoutingMode } from "./converter";
 import { linkToSingbox, singboxToLink, isSingboxConfig } from "./singbox";
 import { Header } from "./components/Header";
 import { Footer } from "./components/Footer";
@@ -54,15 +54,12 @@ function AppContent({
     document.title = t("title");
   }, [t]);
 
-  // 配置框内容变化时即时探测类型，使 UI（标签/占位符/控件）与实际内容同步，
-  // 而非等到点击转换按钮才更新；空内容时保留当前（用户手动选择的）类型。
   const handleClashChange = (v: string) => {
     setClashInput(v);
     if (v.trim()) setConfigType(isSingboxConfig(v) ? "singbox" : "clash");
   };
 
   const convertToLinks = async () => {
-    // config -> link：通过 JSON / YAML 自动判定配置类型
     if (isSingboxConfig(clashInput)) {
       setConfigType("singbox");
       const result = singboxToLink(clashInput);
@@ -74,10 +71,12 @@ function AppContent({
     }
   };
 
-  const convertToClash = (outputMode: string) => {
+  const convertToClash = (outputMode: string, routingMode: ClashRoutingMode) => {
     const links = linksInput.split("\n").filter((line) => line.trim() !== "");
     const result =
-      configType === "singbox" ? linkToSingbox(links) : linkToClash(links, outputMode as any);
+      configType === "singbox"
+        ? linkToSingbox(links)
+        : linkToClash(links, outputMode as any, routingMode);
     setClashInput(result.data);
   };
 
