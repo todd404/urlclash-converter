@@ -9,6 +9,7 @@ import { parsePyYaml } from "./pyyaml";
 import { dump as genYaml } from "js-yaml";
 
 export type ParserType = "js" | "py";
+export type ClashRoutingMode = "none" | "bypass-cn" | "rule" | "global" | "direct";
 
 let currentParser: ParserType = "js";
 
@@ -17,7 +18,11 @@ export function setParser(type: ParserType) {
 }
 
 // ====================== 正向：链接 → Clash ======================
-export function linkToClash(links: string[], mode: ClashOutputMode = "proxies"): ConvertResult {
+export function linkToClash(
+  links: string[],
+  mode: ClashOutputMode = "proxies",
+  routingMode: ClashRoutingMode = "none",
+): ConvertResult {
   let nodeStrings = linksToClashNodes(links);
 
   if (nodeStrings.length === 0) {
@@ -35,6 +40,96 @@ export function linkToClash(links: string[], mode: ClashOutputMode = "proxies"):
   }
 
   const content = nodeStrings.join("\n");
+
+  if (routingMode !== "none") {
+    const parsed = parseJsYaml(`proxies:\n${content}`);
+    const proxies = parsed?.proxies;
+    if (!Array.isArray(proxies) || proxies.length === 0) {
+      return {
+        success: false,
+        data: "# 无法解析生成的节点，未生成分流配置\n# Could not parse generated proxies; routing config was not created",
+      };
+    }
+
+    // Clash reserves several names for built-in policies. Also make duplicate node
+    // names unique so every generated proxy-group reference is unambiguous.
+    const usedNames = new Set(["DIRECT", "REJECT", "REJECT-DROP", "PASS", "GLOBAL", "COMPATIBLE"]);
+    const uniqueName = (base: string): string => {
+      let candidate = base;
+      let suffix = 2;
+      while (usedNames.has(candidate)) {
+        candidate = `${base} (${suffix++})`;
+      }
+      usedNames.add(candidate);
+      return candidate;
+    };
+
+    const proxyNames = proxies.map((proxy: any, index: number) => {
+      const base =
+        typeof proxy.name === "string" && proxy.name.trim()
+          ? proxy.name.trim()
+          : `Proxy ${index + 1}`;
+      const name = uniqueName(base);
+      proxy.name = name;
+      return name;
+    });
+
+    const proxyGroups: any[] = [];
+    let proxyGroupName = "";
+
+    if (routingMode !== "direct") {
+      proxyGroupName = uniqueName("🚀 节点选择");
+      const autoGroupName = uniqueName("♻️ 自动选择");
+      proxyGroups.push(
+        {
+          name: proxyGroupName,
+          type: "select",
+          proxies: [autoGroupName, "DIRECT", ...proxyNames],
+        },
+        {
+          name: autoGroupName,
+          type: "url-test",
+          url: "https://www.gstatic.com/generate_204",
+          interval: 300,
+          tolerance: 50,
+          proxies: proxyNames,
+        },
+      );
+    }
+
+    const rules: string[] = [];
+    if (routingMode === "bypass-cn" || routingMode === "rule") {
+      if (routingMode === "rule") {
+        rules.push("GEOSITE,category-ads-all,REJECT");
+      }
+      rules.push(
+        "IP-CIDR,127.0.0.0/8,DIRECT,no-resolve",
+        "IP-CIDR,10.0.0.0/8,DIRECT,no-resolve",
+        "IP-CIDR,172.16.0.0/12,DIRECT,no-resolve",
+        "IP-CIDR,192.168.0.0/16,DIRECT,no-resolve",
+        "IP-CIDR,169.254.0.0/16,DIRECT,no-resolve",
+        "IP-CIDR6,::1/128,DIRECT,no-resolve",
+        "IP-CIDR6,fc00::/7,DIRECT,no-resolve",
+        "IP-CIDR6,fe80::/10,DIRECT,no-resolve",
+        "GEOSITE,CN,DIRECT",
+        "GEOIP,CN,DIRECT,no-resolve",
+        `MATCH,${proxyGroupName}`,
+      );
+    } else if (routingMode === "global") {
+      rules.push(`MATCH,${proxyGroupName}`);
+    } else if (routingMode === "direct") {
+      rules.push("MATCH,DIRECT");
+    }
+
+    const config: any = { proxies };
+    if (proxyGroups.length > 0) config["proxy-groups"] = proxyGroups;
+    config.rules = rules;
+
+    return {
+      success: true,
+      data: genYaml(config, { lineWidth: -1 }),
+    };
+  }
 
   if (mode === "payload") return { success: true, data: `payload:\n${content}` };
   if (mode === "none") return { success: true, data: content };
